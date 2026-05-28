@@ -1,2 +1,143 @@
-# basys3-24h-alarm-clock
-A 24-hour digital alarm clock implemented in Verilog HDL on the Basys3 FPGA board. Features FSM-based state control, dynamic 7-segment display multiplexing, input debouncing, and a custom passive buzzer melody sequencer for alarms.
+```python
+import os
+
+readme_content = """# Basys3 기반의 24시간 디지털 알람 시계 시스템 개선 프로젝트
+
+> **디지털논리회로시뮬레이션 프로젝트 결과 보고서** > **개발 환경:** Vivado Design Suite, Verilog HDL  
+> **타겟 하드웨어:** Basys3 FPGA Board (Xilinx Artix-7)  
+
+---
+
+## 1. 프로젝트 개요 및 목표
+본 프로젝트는 기존 디지털시계의 단순 시간 표시 한계를 극복하고, 실용적인 **24시간 알람 설정 및 멀티미디어 경보 시스템**을 구축하는 것을 목표로 합니다. FSM(Finite State Machine) 기반의 안정적인 상태 제어와 다양한 주변장치(Pmod 수동 부저, 7세그먼트 디스플레이, 고휘도 외부 및 내장 LED)의 하드웨어 통합을 달성하여 완성도 높은 임베디드 디지털 시스템을 구현하였습니다.
+
+### 주요 개선 사항
+* **독립적 알람 레지스터 구현:** 현재 시간 계측 외에 `alarm_hour`, `alarm_min` 레지스터를 추가하여 독립적인 알람 제어 가능.
+* **하드웨어 입력 안정화:** 물리 버튼 입력단의 채터링(Chattering) 차단을 위한 2단계 동기화 회로 및 에지 검출기 설계.
+* **가변 주파수 부저 제어:** 단조로운 경고음을 탈피하고 수동 부저(Passive Buzzer)를 활용한 멜로디 시퀀서 탑재.
+* **동적 디스플레이 멀티플렉싱:** 스위치(`sw[1]`) 조작을 통해 한 세트의 7세그먼트 디스플레이로 현재 시간과 알람 설정 시간을 가변 표시.
+
+---
+
+## 2. 전체 시스템 구조 (RTL Architecture)
+
+시스템은 탑모듈(`basys3_24h_alarm_clock`) 내부에서 세 개의 핵심 로직 블록(시간 계측 및 조작부, 디스플레이 다중화부, 알람 비교 및 오디오 시퀀서)으로 분할되어 유기적으로 동작합니다.
+
+
+```
+
+```text
+README.md file successfully generated.
+
+
+```
+
+```
+              +-------------------------------------------------------+
+              |               basys3_24h_alarm_clock                  |
+              |                                                       |
+
+```
+
+[clk (100MHz)] --+---> [Clock Divider (1s)] ---> Time Counters           |
+|                                    | (hour/min)       |
+[btnU,D,R,L]   --+---> [Debounce & Edge Detect]       v                  |
+|               |              [Comparator] ----------+ |
+[sw[1]] --------+---------------+----------> [7-Seg MUX] ---> [seg, an] | |
+|               v                    ^                  | |
+[sw[0]] --------+----------> [Alarm Register] --------+                  | |
+|                                                       | |
+|    +-----------------+                                | |
+|    | passive_buzzer  |                                | |
+|    |                 | <------------------------------+ |
++----+--------------------------------------------------+
+| (sw0 / trigger) |
+v                 v
+[buzzer]          [ext_led]
+
+```
+
+### 핵심 입출력 포트 설명
+* `clk`: 100MHz 메인 시스템 클럭 입력
+* `sw[0]`: 알람 기능 마스터 ON/OFF 스위치
+* `sw[1]`: 디스플레이 전환 스위치 (`0`: 현재 시간 표시, `1`: 알람 설정 시간 표시)
+* `btnU` / `btnD`: 현재 시간의 시(Hour) / 분(Minute) 가산 버튼
+* `btnR` / `btnL`: 알람 목표 시간의 시(Hour) / 분(Minute) 가산 버튼
+* `seg[6:0]` / `an[3:0]`: 시분할 제어 방식의 7세그먼트 출력 포트
+* `buzzer`: Pmod J1 헤더로 출력되는 사각파 오디오 신호
+* `ext_led` / `led[15:0]`: 알람 발생 시 동기화되어 점멸하는 외부 및 내장형 LED 바
+
+---
+
+## 3. 회로 구성 및 로직 상세 설명 (Circuit Explanation)
+
+### ① 클럭 분주 회로 (Clock Divider Circuit)
+Basys3 보드의 100MHz 기본 클럭은 디지털 카운터 기반 분주 회로를 거쳐 두 가지 도메인으로 변환됩니다.
+* **1초 계측기 (`tick_1s`):** 27비트 레지스터 `clk_div`가 `27'd99_999_999`까지 카운트한 뒤 리셋되는 방식으로 정확한 1초 주기의 이네이블 펄스를 생성하여 시간 카운터를 구동합니다.
+* **디스플레이 스캔 카운터 (`scan_div`):** 19비트 프리러닝 카운터의 상위 2비트(`scan_div[18:17]`)를 다중화 회로의 선택 신호로 사용하여 수백 Hz 주기로 4자리의 디스플레이를 순차 점등시킵니다.
+
+### ② 채터링 방지 및 에지 검출 회로 (Debounce & Edge Detection)
+물리 버튼의 기계적 노이즈를 제어하기 위해 모든 버튼 입력단에 **2단 직렬 플립플롭 동기화기(2-stage D-FF Synchronizer)**와 **동기식 상승 에지 검출기(Rising Edge Detector)**를 배치하였습니다.
+
+```
+
+[물리 버튼] -> [D-FF 0] -> [D-FF 1 (btn_s1)] -> [D-FF prev (btn_prev)]
+|                     |
++--------> [AND] <----+ (Inverted)
+|
+v [엣지 펄스 출력]
+
+```
+동기화 처리를 거친 후, `btn_s1 && !btn_prev` 조건 논리곱 연산을 통해 버튼이 눌리는 최초 순간에 단 1클럭 주기 동안만 하이 펄스를 출력함으로써 시간이 무작위로 튀는 오작동을 완벽히 방지합니다.
+
+### ③ 동적 디스플레이 멀티플렉싱 회로 (Dynamic 7-Segment Multiplexer)
+자원 절약 및 핀 최소화를 위해 4자리의 7세그먼트 디스플레이가 하나의 데이터 버스(`seg[6:0]`)를 공유합니다. 
+* `sw[1]` 신호가 멀티플렉서(MUX)의 제어선 역할을 하여 `0`일 때는 현재 시간이, `1`일 때는 알람 설정 데이터가 7세그먼트 디코더로 바이패스됩니다.
+* `scan_div[18:17]`에 따라 4채널 디멀티플렉서 회로가 구동되어 공통 애노드 단자 `an[3:0]` 중 단 하나만 로우(`0`, 활성화)로 떨어트리고 해당하는 자리에 일치하는 BCD 데이터를 세그먼트 패턴으로 변환하여 출력합니다.
+
+### ④ 외부 LED 및 수동 부저 제어 회로 (External LED & Buzzer Controls)
+* **외부 LED 플래싱 회로 (`ext_led`):** 디지털 비교기에 의해 실시간 시/분 데이터가 알람 시/분 레지스터와 일치하고 `sw[0]`이 켜지면 `alarm_active` 신호가 트리거됩니다. 알람 상태인 동안 시스템 내 분주 레지스터 기반의 플래싱 클럭(`state_flash`)에 동기화되어 외부 고휘도 LED와 16비트 내장 LED 바가 동시에 점멸(Strobe)합니다.
+* **수동형 부저 가변 주파수 회로 (`buzzer`):** 수동 부저는 직류 전압이 아닌 주기적인 사각파(Square Wave) 전압이 인가되어야 물리적 진동판이 울려 소리가 납니다. `passive_buzzer` 모듈 내부의 18비트 카운터 `pitch_count`가 메인 클럭을 카운트하다가 시퀀서가 지정한 음고 한계 상수(`target_pitch`)와 일치할 때마다 `buzzer <= ~buzzer` 형태로 출력을 토글하여 50% 듀티 사이클의 사각파 음성 신호를 생성합니다.
+* **오디오 시퀀서 FSM:** 대용량 지속 시간 레지스터(`duration_count`)와 상태 레지스터(`note_index`) 회로를 결합하여 단조로운 경고음이 아닌 악보 데이터(예: `NOTE_E5`, `NOTE_FS5` 주파수 매핑 배열)를 순차 전환해 멜로디 형태의 직관적인 경보를 실현하였습니다.
+
+---
+
+## 4. 하드웨어 매핑 정보 (Constraints / XDC)
+
+Basys3 하드웨어의 물리 핀과 Verilog 포트 간의 연결 관계 정의 정보입니다. (`constraints/Basys-3-Master.xdc`)
+
+* **시스템 클럭:** `W5` (100MHz, 주기 10ns)
+* **제어 스위치:**
+  * `sw[0]` $\rightarrow$ 핀 `V17` (알람 기능 마스터 ON/OFF)
+  * `sw[1]` $\rightarrow$ 핀 `V16` (디스플레이 전환: 실시간 $\leftrightarrow$ 알람시간)
+* **인터랙티브 푸시 버튼:**
+  * `btnU` (핀 `T18`) / `btnD` (핀 `U17`) $\rightarrow$ 실시간 시/분 설정 가산
+  * `btnR` (핀 `T17`) / `btnL` (핀 `W19`) $\rightarrow$ 알람 목표 시/분 설정 가산
+* **출력 인터페이스:**
+  * 7세그먼트 데이터선(`seg[0:6]`): 핀 `W7` ~ `V8`
+  * 7세그먼트 공통 애노드 자리선(`an[0:3]`): 핀 `U2`, `U4`, `V4`, `W4`
+  * 부저 출력 포트(`buzzer`): 핀 `J1` (Pmod JA 상단 헤더 첫 번째 핀)
+  * 외부 고휘도 LED 포트 (`ext_led`): 핀 `L1` (확장 I/O 포트 매핑)
+
+---
+
+## 5. 프로젝트 파일 구조
+```text
+.
+├── README.md                  # 본 프로젝트 설명 및 결과 보고서 문서
+├── .gitignore                 # Xilinx Vivado 빌드 정크 파일 제외 설정
+├── LICENSE                    # MIT Open Source License
+├── src/                       # Verilog HDL 소스 코드 디렉토리
+│   ├── 24_alarm.v             # 시스템 탑모듈 및 전체 제어 로직
+│   └── buzzer.v               # 가변 주파수 사각파 발생기 및 오디오 시퀀서
+└── constraints/               # 물리 핀 매핑 제약 조건 디렉토리
+    └── Basys-3-Master.xdc     # Basys3 보드 하드웨어 매핑 파일
+
+```
+
+---
+
+## 6. 라이선스 (License)
+
+본 프로젝트는 **MIT 라이선스**하에 배포됩니다. 자유롭게 수정, 배포 및 활용이 가능합니다.
+
